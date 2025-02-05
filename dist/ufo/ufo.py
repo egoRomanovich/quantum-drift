@@ -12,8 +12,6 @@ pygame.mixer.music.set_volume(0.5)
 pygame.mixer.music.play(-1)
 # переменная для проверки запуска мелодии для корректной работы паузы и отключения мелодии
 sound_playing = True
-# глобально создаю скорость падения бомбы, чтобы её можно было использовать в классе и в функции
-bomb_speed = 5
 # переменная, отвечающая за скорость притяжения чёрной дыры
 attraction_speed = 2
 # глобально отслеживаю количество тиков в игре, чтобы функция паузы работала корректно
@@ -25,8 +23,6 @@ pygame.display.set_caption('Quantum Drift')
 FPS = 60
 clock = pygame.time.Clock()
 pygame.mouse.set_visible(False)
-# глобально создаю группу спрайтов, чтобы с ней можно было работать из классов
-all_sprites = pygame.sprite.Group()
 
 
 def load_image(name, color_key=None):
@@ -161,16 +157,18 @@ class Ufo(pygame.sprite.Sprite):
 class Quant(pygame.sprite.Sprite):
     quant = load_image('quant.png')
 
-    def __init__(self, group, score):
+    def __init__(self, group, score, ufo):
         super().__init__(group)
         self.image = Quant.quant
         self.rect = self.image.get_rect()
         self.mask = pygame.mask.from_surface(self.image)
+        self.ufo = ufo
         self.set_random_pos() # задаю кванту случайную позицию при появлении
         self.score = score
 
+
     def update(self, *args):
-        if pygame.sprite.collide_mask(self, all_sprites.sprites()[0]):
+        if pygame.sprite.collide_mask(self, self.ufo):
             # при касании корабля кванта увеличиваю счёт и задаю новую позицию для кванта
             self.score[0] += 1
             self.set_random_pos()
@@ -180,7 +178,7 @@ class Quant(pygame.sprite.Sprite):
             self.rect.x = random.randint(0, WIDTH - self.rect.width)
             self.rect.y = random.randint(0, HEIGHT - self.rect.height)
             # проверяю, чтобы квант не появился в корабле
-            if not pygame.sprite.collide_rect(self, all_sprites.sprites()[0]):
+            if not pygame.sprite.collide_rect(self, self.ufo):
                 break
 
 
@@ -188,7 +186,7 @@ class Quant(pygame.sprite.Sprite):
 class Bomb(pygame.sprite.Sprite):
     boom = load_image('boom.png')
 
-    def __init__(self, group, hp):
+    def __init__(self, group, hp, ufo):
         super().__init__(group)
         # для разнообразия генерирую случайное изображение из 7
         self.image = load_image(f'bomb{random.randint(1, 7)}.png')
@@ -201,6 +199,8 @@ class Bomb(pygame.sprite.Sprite):
         self.hp = hp
         # этот атрибут отслеживает время, которое прошло с момента пересечения бомбы и корабля
         self.boom_timer = None
+        self.ufo = ufo
+        self.speed = 5
 
     def update(self):
         # проверяю, что с момента взрыва прошло 400 мс, чтобы пользователь успел заметить взрыв и потом он пропал
@@ -208,8 +208,8 @@ class Bomb(pygame.sprite.Sprite):
             if pygame.time.get_ticks() - self.boom_timer > 400:
                 self.kill()
             return
-        self.rect.y += bomb_speed
-        if pygame.sprite.collide_mask(self, all_sprites.sprites()[0]):
+        self.rect.y += self.speed
+        if pygame.sprite.collide_mask(self, self.ufo):
             self.hp[0] -= 1
             # при контакте бомбы с кораблём, меняю изображение бомбы на изображение взрыва
             self.image = self.boom
@@ -223,10 +223,11 @@ class Bomb(pygame.sprite.Sprite):
 class BlackHole(pygame.sprite.Sprite):
     black_hole = load_image('black-hole.png')
 
-    def __init__(self, group, hp, spawn_time):
+    def __init__(self, group, hp, spawn_time, ufo):
         super().__init__(group)
         self.image = BlackHole.black_hole
         self.rect = self.image.get_rect()
+        self.ufo = ufo
         # задаю случайное место появления черной дыры
         self.set_random_pos()
         self.mask = pygame.mask.from_surface(self.image)
@@ -240,23 +241,21 @@ class BlackHole(pygame.sprite.Sprite):
             self.kill()
             return
         # далее реализую код, который реализует механику притяжения центра корабля к центру черной дыры
-        target = all_sprites.sprites()[0]
         black_hole_center = self.rect.center
-        target_center = target.rect.center
+        target_center = self.ufo.rect.center
         dx = black_hole_center[0] - target_center[0]
         dy = black_hole_center[1] - target_center[1]
         distance = (dx ** 2 + dy ** 2) ** 0.5
         if 0 < distance <= 200: # притяжение начнётся только в том случае, если между центрам расстояние меньше 200 пкс
             dx /= distance
             dy /= distance
-            target.rect.x += int(dx * attraction_speed)
-            target.rect.y += int(dy * attraction_speed)
-        if pygame.sprite.collide_mask(self, target): # если корабль касается черной дыры - мгновенная смерть
+            self.ufo.rect.x += int(dx * attraction_speed)
+            self.ufo.rect.y += int(dy * attraction_speed)
+        if pygame.sprite.collide_mask(self, self.ufo): # если корабль касается черной дыры - мгновенная смерть
             self.hp[0] = 0
 
     def set_random_pos(self):
-        target = all_sprites.sprites()[0]
-        target_center = target.rect.center
+        target_center = self.ufo.rect.center
         while True:
             self.rect.x = random.randint(0, WIDTH - self.rect.width)
             self.rect.y = random.randint(0, HEIGHT - self.rect.height)
@@ -463,13 +462,13 @@ def control_screen():
 # функция, реализующая игровое окно
 def game_screen(hp, max_hp, black_hole):
     # использую глобальные переменные
-    global bomb_speed # так как каждая бомба создаётся без привязки к переменной, управляю скоростью всех бомб
-    # через глобальную переменную
     global attraction_speed
     global time_units
+    all_sprites = pygame.sprite.Group()
+    bombs = []
     score = [0] # делаю счёт списком, чтобы иметь к нему доступ из класса
     ufo = Ufo(all_sprites)
-    Quant(all_sprites, score)
+    Quant(all_sprites, score, ufo)
     health = pygame.sprite.Group()
     # переменная для проверки состояния паузы
     game_paused = False
@@ -490,10 +489,10 @@ def game_screen(hp, max_hp, black_hole):
         time_units += time_delta
         # если прошла секунда, или 60 тиков, появляется бомба
         if time_units % 60 == 0:
-            Bomb(all_sprites, hp)
+            bombs.append(Bomb(all_sprites, hp, ufo))
         if black_hole:
             if time_units == black_hole_spawn:
-                BlackHole(all_sprites, hp, time_units)
+                BlackHole(all_sprites, hp, time_units, ufo)
                 black_hole_spawn += 660 # следующая черная дыра появляется через 7 секунд, после "гибели" предыдущей
                 # то есть 4 + 7 = 11 секунд или 660 тиков
         for event in pygame.event.get():
@@ -501,8 +500,6 @@ def game_screen(hp, max_hp, black_hole):
                 terminate()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # если игра окончена, очищаю группу всех спрайтов, чтобы в следующей игре они не появились
-                    all_sprites.empty()
                     game_over_screen(score[0])
                 elif event.key == pygame.K_SPACE:
                     # останавливаю игру
@@ -511,14 +508,16 @@ def game_screen(hp, max_hp, black_hole):
                         # за передвижение объектов и отслеживание времени
                         ufo.speed = 7
                         time_delta = 1
-                        bomb_speed = 5
+                        for bomb in bombs:
+                            bomb.speed = 5
                         attraction_speed = 2
                         if sound_playing:
                             pygame.mixer.music.unpause()
                     else: # если игра на паузе, обнуляю все переменные, отвечающие за движение объектов и времени
                         ufo.speed = 0
                         time_delta = 0
-                        bomb_speed = 0
+                        for bomb in bombs:
+                            bomb.speed = 0
                         attraction_speed = 0
                         if sound_playing:
                             pygame.mixer.music.pause()
@@ -529,8 +528,6 @@ def game_screen(hp, max_hp, black_hole):
                         hp[0] += 1
         all_sprites.update()
         if hp[0] == 0:
-            # если игра окончена, очищаю группу всех спрайтов, чтобы в следующей игре они не появились
-            all_sprites.empty()
             game_over_screen(score[0])
         screen.blit(score_text, (10, 10))
         # заполняю группу спрайтов со здоровьем изображениями сердец в количестве текущего здоровья
