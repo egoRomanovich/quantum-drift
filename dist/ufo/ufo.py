@@ -12,8 +12,6 @@ pygame.mixer.music.set_volume(0.5)
 pygame.mixer.music.play(-1)
 # переменная для проверки запуска мелодии для корректной работы паузы и отключения мелодии
 sound_playing = True
-# переменная, отвечающая за скорость притяжения чёрной дыры
-attraction_speed = 2
 # глобально отслеживаю количество тиков в игре, чтобы функция паузы работала корректно
 time_units = 0
 
@@ -234,6 +232,7 @@ class BlackHole(pygame.sprite.Sprite):
         self.hp = hp
         # отмечаю время, когда черная дыра появилась
         self.spawn_time = spawn_time
+        self.attraction_speed = 2
 
     def update(self):
         # при помощи глобально переменной time_units отслеживаю, чтобы черная дыра не пропала во время паузы
@@ -249,8 +248,8 @@ class BlackHole(pygame.sprite.Sprite):
         if 0 < distance <= 200: # притяжение начнётся только в том случае, если между центрам расстояние меньше 200 пкс
             dx /= distance
             dy /= distance
-            self.ufo.rect.x += int(dx * attraction_speed)
-            self.ufo.rect.y += int(dy * attraction_speed)
+            self.ufo.rect.x += int(dx * self.attraction_speed)
+            self.ufo.rect.y += int(dy * self.attraction_speed)
         if pygame.sprite.collide_mask(self, self.ufo): # если корабль касается черной дыры - мгновенная смерть
             self.hp[0] = 0
 
@@ -462,7 +461,6 @@ def control_screen():
 # функция, реализующая игровое окно
 def game_screen(hp, max_hp, black_hole):
     # использую глобальные переменные
-    global attraction_speed
     global time_units
     all_sprites = pygame.sprite.Group()
     bombs = []
@@ -483,6 +481,7 @@ def game_screen(hp, max_hp, black_hole):
         black_hole_spawn = 420
     else:
         black_hole_spawn = None
+    bh = None
     while True:
         screen.fill((0, 0, 64))
         score_text = font2.render(f'Счёт: {score[0]}', 1, pygame.Color('white'))
@@ -492,7 +491,7 @@ def game_screen(hp, max_hp, black_hole):
             bombs.append(Bomb(all_sprites, hp, ufo))
         if black_hole:
             if time_units == black_hole_spawn:
-                BlackHole(all_sprites, hp, time_units, ufo)
+                bh = BlackHole(all_sprites, hp, time_units, ufo)
                 black_hole_spawn += 660 # следующая черная дыра появляется через 7 секунд, после "гибели" предыдущей
                 # то есть 4 + 7 = 11 секунд или 660 тиков
         for event in pygame.event.get():
@@ -510,7 +509,7 @@ def game_screen(hp, max_hp, black_hole):
                         time_delta = 1
                         for bomb in bombs:
                             bomb.speed = 5
-                        attraction_speed = 2
+                        bh.attraction_speed = 2
                         if sound_playing:
                             pygame.mixer.music.unpause()
                     else: # если игра на паузе, обнуляю все переменные, отвечающие за движение объектов и времени
@@ -518,7 +517,7 @@ def game_screen(hp, max_hp, black_hole):
                         time_delta = 0
                         for bomb in bombs:
                             bomb.speed = 0
-                        attraction_speed = 0
+                        bh.attraction_speed = 0
                         if sound_playing:
                             pygame.mixer.music.pause()
                 elif event.key == pygame.K_h:
